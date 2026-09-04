@@ -1,6 +1,9 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import fastifyStatic from "@fastify/static";
+import path from "path";
+import fs from "fs";
 import { marketDataService } from "./services/marketDataService.js";
 import { marketRoutes } from "./routes/marketRoutes.js";
 import { sessionRoutes } from "./routes/sessionRoutes.js";
@@ -12,16 +15,13 @@ const fastify = Fastify({
 
 async function bootstrap() {
   try {
-    // 1. Enable CORS for local dev frontend
     await fastify.register(cors, {
       origin: true,
       methods: ["GET", "POST", "PUT", "DELETE"],
     });
 
-    // 2. Enable WebSockets
     await fastify.register(websocket);
 
-    // 3. Register WebSocket Endpoint
     fastify.register(async function (fastify) {
       fastify.get("/ws/market", { websocket: true }, (socket, req) => {
         fastify.log.info("Client connected to /ws/market");
@@ -45,17 +45,35 @@ async function bootstrap() {
       });
     });
 
-    // 4. Register HTTP REST API Routes
     await fastify.register(marketRoutes, { prefix: "/api/market" });
     await fastify.register(sessionRoutes, { prefix: "/api/session" });
     await fastify.register(watchlistRoutes, { prefix: "/api/watchlists" });
 
-    // Health check
     fastify.get("/health", async () => {
       return { status: "UP", service: "PulseWatch Ingestion & Analytics Engine", timestamp: new Date().toISOString() };
     });
 
-    // 5. Initialize In-Memory Market State and Simulator
+    // Serve Frontend Static Assets if frontend/dist exists
+    const frontendDistPath = path.resolve(process.cwd(), "../frontend/dist");
+    const localDistPath = path.resolve(process.cwd(), "frontend/dist");
+    const activePath = fs.existsSync(frontendDistPath) ? frontendDistPath : (fs.existsSync(localDistPath) ? localDistPath : null);
+
+    if (activePath) {
+      await fastify.register(fastifyStatic, {
+        root: activePath,
+        prefix: "/",
+      });
+
+      fastify.setNotFoundHandler((req, reply) => {
+        if (req.raw.url && req.raw.url.startsWith("/api")) {
+          reply.status(404).send({ error: "Endpoint not found" });
+        } else {
+          reply.sendFile("index.html");
+        }
+      });
+      fastify.log.info(`Serving static frontend from: ${activePath}`);
+    }
+
     await marketDataService.initialize();
 
     const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;

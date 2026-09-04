@@ -232,6 +232,7 @@ export function App() {
         {/* While You Were Away Digest Banner */}
         <CatchUpDigest
           digest={digest}
+          streamQuotes={streamQuotes}
           onAcknowledge={handleAcknowledgeCatchUp}
           onSelectStock={(sym) => setSelectedStockSymbol(sym)}
         />
@@ -247,7 +248,7 @@ export function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
-        Groww CODE 2026 Engineering Build • PulseWatch Smart Market Watchlist Architecture • Multi-User Persistent Session Engine
+        Groww CODE 2026 Engineering Build â€¢ PulseWatch Smart Market Watchlist Architecture â€¢ Multi-User Persistent Session Engine
       </footer>
 
       {/* Modals */}

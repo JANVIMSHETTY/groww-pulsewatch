@@ -1,23 +1,60 @@
 import React from "react";
-import { SessionCatchUpDigest } from "../types/market.js";
+import { SessionCatchUpDigest, ProcessedQuote } from "../types/market.js";
 import { formatINR, formatPercent, formatMinutesAgo, getAttentionColor } from "../utils/formatters.js";
 import { Sparkles, CheckCircle2, TrendingUp, TrendingDown, Clock } from "lucide-react";
 
 interface Props {
   digest: SessionCatchUpDigest | null;
+  streamQuotes: ProcessedQuote[];
   onAcknowledge: () => void;
   onSelectStock: (symbol: string) => void;
 }
 
-export const CatchUpDigest: React.FC<Props> = ({ digest, onAcknowledge, onSelectStock }) => {
+export const CatchUpDigest: React.FC<Props> = ({
+  digest,
+  streamQuotes,
+  onAcknowledge,
+  onSelectStock,
+}) => {
   if (!digest) return null;
 
-  const urgentMovers = digest.topMoversSinceLastSeen.filter((m) => m.attentionScore >= 40);
+  // Merge live stream quotes so the cards stay 100% live and in sync with the table
+  const liveMovers = digest.topMoversSinceLastSeen.map((m) => {
+    const liveQuote = streamQuotes.find((q) => q.symbol === m.symbol);
+    if (!liveQuote) return m;
+
+    const livePrice = liveQuote.price;
+    const changeSinceSeenPct = Number(
+      (((livePrice - m.priceThen) / m.priceThen) * 100).toFixed(2)
+    );
+
+    let liveHighlight = m.keyHighlight;
+    if (liveQuote.activeEvents.length > 0) {
+      liveHighlight = liveQuote.activeEvents[0].headline;
+    } else if (liveQuote.attentionBreakdown.primaryReason) {
+      liveHighlight = liveQuote.attentionBreakdown.primaryReason;
+    }
+
+    return {
+      ...m,
+      priceNow: livePrice,
+      changeSinceSeenPct,
+      attentionScore: liveQuote.attentionScore,
+      keyHighlight: liveHighlight,
+    };
+  });
+
+  // Dynamically sort by live attention score descending
+  liveMovers.sort((a, b) => b.attentionScore - a.attentionScore);
+
+  const urgentMovers = liveMovers.filter((m) => m.attentionScore >= 40);
+  const topThree = urgentMovers.length > 0 ? urgentMovers.slice(0, 3) : liveMovers.slice(0, 3);
 
   return (
     <section className="bg-gradient-to-b from-[#181A24] to-[#12131A] rounded-2xl border border-slate-800 p-6 shadow-xl relative overflow-hidden mb-6">
       <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
+      {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 border-b border-slate-800/80">
         <div>
           <div className="flex items-center gap-2 mb-1.5">
@@ -36,7 +73,7 @@ export const CatchUpDigest: React.FC<Props> = ({ digest, onAcknowledge, onSelect
               : "Markets have stayed relatively calm across your watchlist"}
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Analyzing deltas between your last session snapshot and live liquidity order flow.
+            Real-time ranked deltas between your last session baseline and live market order flow.
           </p>
         </div>
 
@@ -49,9 +86,10 @@ export const CatchUpDigest: React.FC<Props> = ({ digest, onAcknowledge, onSelect
         </button>
       </div>
 
-      {urgentMovers.length > 0 ? (
+      {/* Live Sorted Top-3 Cards */}
+      {topThree.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-5">
-          {urgentMovers.slice(0, 3).map((mover) => {
+          {topThree.map((mover, index) => {
             const isGain = mover.changeSinceSeenPct >= 0;
             const style = getAttentionColor(mover.attentionScore);
 
@@ -71,6 +109,9 @@ export const CatchUpDigest: React.FC<Props> = ({ digest, onAcknowledge, onSelect
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${style.badge}`}>
                           Score {mover.attentionScore}
                         </span>
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          #{index + 1} Priority
+                        </span>
                       </div>
                       <div className="text-[11px] text-slate-400 truncate max-w-[170px]">
                         {mover.name}
@@ -88,6 +129,7 @@ export const CatchUpDigest: React.FC<Props> = ({ digest, onAcknowledge, onSelect
                     </div>
                   </div>
 
+                  {/* Highlight pill */}
                   <div className="mt-2.5 p-2 rounded-lg bg-[#12131A]/60 border border-slate-800/60 text-[11px] text-slate-300">
                     <span className="font-medium text-slate-200 block mb-0.5">Shift Highlight:</span>
                     <span className="text-slate-400 leading-tight block">{mover.keyHighlight}</span>
@@ -95,7 +137,7 @@ export const CatchUpDigest: React.FC<Props> = ({ digest, onAcknowledge, onSelect
                 </div>
 
                 <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-400">
-                  <span>Price then: {formatINR(mover.priceThen)}</span>
+                  <span>Baseline: {formatINR(mover.priceThen)}</span>
                   <span className="text-emerald-400 font-medium group-hover:underline">View Analysis &rarr;</span>
                 </div>
               </div>

@@ -1,0 +1,97 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String        @id @default(uuid())
+  email          String        @unique
+  name           String
+  activeDeviceId String?
+  lastViewedAt   DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  watchlists     Watchlist[]
+  sessions       UserSession[]
+}
+
+model UserSession {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId     String
+  startedAt    DateTime  @default(now())
+  lastActiveAt DateTime  @default(now())
+  endedAt      DateTime?
+}
+
+model Watchlist {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  isDefault Boolean         @default(false)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  items     WatchlistItem[]
+}
+
+model WatchlistItem {
+  id          String     @id @default(uuid())
+  watchlistId String
+  watchlist   Watchlist  @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  symbol      String
+  instrument  Instrument @relation(fields: [symbol], references: [symbol])
+  addedAt     DateTime   @default(now())
+
+  @@unique([watchlistId, symbol])
+}
+
+model Instrument {
+  symbol            String          @id
+  name              String
+  exchange          String          @default("NSE")
+  sector            String
+  dayOpen           Float
+  previousClose     Float
+  fiftyTwoWeekHigh  Float
+  fiftyTwoWeekLow   Float
+  upperCircuit      Float
+  lowerCircuit      Float
+  baselineVolume20D Float
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  watchlistItems    WatchlistItem[]
+  snapshots         TickSnapshot[]
+  events            MarketEvent[]
+}
+
+model TickSnapshot {
+  id         String     @id @default(uuid())
+  symbol     String
+  instrument Instrument @relation(fields: [symbol], references: [symbol], onDelete: Cascade)
+  price      Float
+  volume     Float
+  timestamp  DateTime   @default(now())
+
+  @@index([symbol, timestamp])
+}
+
+model MarketEvent {
+  id         String     @id @default(uuid())
+  symbol     String
+  instrument Instrument @relation(fields: [symbol], references: [symbol], onDelete: Cascade)
+  eventType  String     // e.g. "VOLUME_SURGE", "BREAKOUT_52W_HIGH", "CIRCUIT_APPROACH", "VOLATILITY_SPIKE"
+  severity   String     // "INFO", "WARNING", "CRITICAL"
+  headline   String
+  details    String
+  metrics    String     // JSON encoded data snapshot
+  timestamp  DateTime   @default(now())
+
+  @@index([symbol, timestamp])
+  @@index([timestamp])
+}

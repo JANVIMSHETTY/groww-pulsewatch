@@ -32,14 +32,34 @@ export class WatchlistService {
     }));
   }
 
-  public async addSymbol(watchlistId: string, symbol: string) {
-    const sym = symbol.toUpperCase();
-    const instrument = await prisma.instrument.findUnique({
+  public async addSymbol(watchlistId: string, symbol: string, customName?: string, customPrice?: number) {
+    const sym = symbol.toUpperCase().trim();
+    let instrument = await prisma.instrument.findUnique({
       where: { symbol: sym },
     });
 
+    // If instrument doesn't exist yet, auto-register it!
     if (!instrument) {
-      throw new Error(`Instrument ${sym} not supported or found`);
+      const price = customPrice ?? (Math.floor(100 + Math.random() * 2500));
+      const baselineVolume = 5000000;
+      instrument = await prisma.instrument.create({
+        data: {
+          symbol: sym,
+          name: customName || `${sym} Industries Ltd`,
+          exchange: "NSE",
+          sector: "Equities / Diversified",
+          dayOpen: price,
+          previousClose: price,
+          fiftyTwoWeekHigh: Number((price * 1.25).toFixed(2)),
+          fiftyTwoWeekLow: Number((price * 0.75).toFixed(2)),
+          upperCircuit: Number((price * 1.10).toFixed(2)),
+          lowerCircuit: Number((price * 0.90).toFixed(2)),
+          baselineVolume20D: baselineVolume,
+        },
+      });
+
+      // Register with live market service
+      await marketDataService.registerInstrument(instrument);
     }
 
     return prisma.watchlistItem.upsert({

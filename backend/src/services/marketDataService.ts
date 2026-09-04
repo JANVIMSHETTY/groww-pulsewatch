@@ -23,12 +23,26 @@ export class MarketDataService {
   private broadcastInterval: NodeJS.Timeout | null = null;
 
   public async initialize() {
-    // Load instruments from DB
     const dbInstruments = await prisma.instrument.findMany();
     for (const inst of dbInstruments) {
-      this.instruments.set(inst.symbol, inst);
+      this.registerInstrument(inst);
+    }
 
-      // Initialize default quote
+    this.simulator.startStreaming(800, (tick) => {
+      this.handleIncomingTick(tick);
+    });
+
+    this.broadcastInterval = setInterval(() => {
+      this.checkStalenessAndBroadcast();
+    }, 1000);
+
+    console.log(`MarketDataService initialized with ${this.instruments.size} instruments.`);
+  }
+
+  public registerInstrument(inst: Instrument) {
+    this.instruments.set(inst.symbol, inst);
+
+    if (!this.liveQuotes.has(inst.symbol)) {
       const initialQuote: ProcessedQuote = {
         symbol: inst.symbol,
         name: inst.name,
@@ -69,26 +83,7 @@ export class MarketDataService {
       this.liveQuotes.set(inst.symbol, initialQuote);
     }
 
-    // Initialize Simulator
-    this.simulator.initialize(
-      dbInstruments.map((i) => ({
-        symbol: i.symbol,
-        initialPrice: i.previousClose,
-        baselineVolume: i.baselineVolume20D,
-      }))
-    );
-
-    // Start consuming simulator ticks
-    this.simulator.startStreaming(800, (tick) => {
-      this.handleIncomingTick(tick);
-    });
-
-    // Broadcast throttled snapshot every 1000ms
-    this.broadcastInterval = setInterval(() => {
-      this.checkStalenessAndBroadcast();
-    }, 1000);
-
-    console.log(`MarketDataService initialized with ${this.instruments.size} instruments.`);
+    this.simulator.registerStock(inst.symbol, inst.previousClose, inst.baselineVolume20D);
   }
 
   public handleIncomingTick(tick: RawTick): boolean {
@@ -96,24 +91,19 @@ export class MarketDataService {
     const instrument = this.instruments.get(symbol);
     if (!instrument) return false;
 
-    // 1. Monotonic Sequence & Clock Skew Validation
     const validation = this.tickSequencer.validateAndSequence(tick);
     if (!validation.isValid) {
-      // Out-of-order or duplicate tick rejected
       return false;
     }
 
-    // 2. Multi-Exchange Conflict Reconciliation
     const recon = this.conflictResolver.reconcile(tick);
     const resolvedTick = recon.preferredTick;
 
-    // 3. Meaningful Change Detection
     const events = this.changeDetector.evaluateChanges(instrument, resolvedTick);
     if (events.length > 0) {
       this.activeEvents.set(symbol, events);
     }
 
-    // 4. Update In-Memory Quote State
     const current = this.liveQuotes.get(symbol)!;
     const price = resolvedTick.price;
     const dayChange = Number((price - instrument.previousClose).toFixed(2));
@@ -121,7 +111,7 @@ export class MarketDataService {
     const dayHigh = Math.max(current.dayHigh, price);
     const dayLow = Math.min(current.dayLow, price);
 
-    const expectedVolByNow = instrument.baselineVolume20D * 0.5; // mid-session baseline
+    const expectedVolByNow = instrument.baselineVolume20D * 0.5;
     const volumeMultiple = Number((resolvedTick.volume / Math.max(1, expectedVolByNow)).toFixed(2));
 
     const distToUpper = Math.max(0, ((instrument.upperCircuit - price) / instrument.upperCircuit) * 100);
@@ -130,7 +120,6 @@ export class MarketDataService {
 
     const isBreakout = price >= instrument.fiftyTwoWeekHigh || price <= instrument.fiftyTwoWeekLow;
 
-    // 5. Attention Scoring (0 - 100)
     const activeEvts = this.activeEvents.get(symbol) ?? [];
     const breakdown = this.attentionScorer.computeScore(
       price,
@@ -194,7 +183,6 @@ export class MarketDataService {
 
   public subscribe(ws: WebSocket) {
     this.subscribers.add(ws);
-    // Send immediate initial state
     ws.send(
       JSON.stringify({
         type: "INITIAL_STATE",

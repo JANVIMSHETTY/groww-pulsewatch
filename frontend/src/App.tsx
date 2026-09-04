@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useMarketFeed } from "./hooks/useMarketFeed.js";
-import { Navbar } from "./components/Navbar.js";
+import { Navbar, UserProfile } from "./components/Navbar.js";
 import { CatchUpDigest } from "./components/CatchUpDigest.js";
 import { WatchlistTable } from "./components/WatchlistTable.js";
 import { StockDetailModal } from "./components/StockDetailModal.js";
@@ -10,6 +10,8 @@ import { ProcessedQuote, SessionCatchUpDigest, Watchlist } from "./types/market.
 
 export function App() {
   const { quotes: streamQuotes, connectionStatus } = useMarketFeed();
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [activeUserId, setActiveUserId] = useState<string>("usr_groww_001");
   const [watchlists, setWatchlists] = useState<Watchlist[]>([]);
   const [activeWatchlistId, setActiveWatchlistId] = useState<string | null>(null);
   const [digest, setDigest] = useState<SessionCatchUpDigest | null>(null);
@@ -19,27 +21,38 @@ export function App() {
   const [isTimeTravelOpen, setIsTimeTravelOpen] = useState(false);
   const [isAddStockOpen, setIsAddStockOpen] = useState(false);
 
-  // Fetch Watchlists
-  const fetchWatchlists = useCallback(async () => {
+  // Fetch Users
+  const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch("/api/watchlists");
+      const res = await fetch("/api/session/users");
+      const data = await res.json();
+      if (data.success && data.users.length > 0) {
+        setUsers(data.users);
+      }
+    } catch (e) {
+      console.error("Failed to fetch users:", e);
+    }
+  }, []);
+
+  // Fetch Watchlists for Active User
+  const fetchWatchlists = useCallback(async (userId: string) => {
+    try {
+      const res = await fetch(`/api/watchlists?userId=${userId}`);
       const data = await res.json();
       if (data.success && data.watchlists.length > 0) {
         setWatchlists(data.watchlists);
-        if (!activeWatchlistId) {
-          const defaultWl = data.watchlists.find((w: any) => w.isDefault) || data.watchlists[0];
-          setActiveWatchlistId(defaultWl.id);
-        }
+        const defaultWl = data.watchlists.find((w: any) => w.isDefault) || data.watchlists[0];
+        setActiveWatchlistId(defaultWl.id);
       }
     } catch (e) {
       console.error("Failed to fetch watchlists:", e);
     }
-  }, [activeWatchlistId]);
+  }, []);
 
-  // Fetch Catch-Up Digest
-  const fetchCatchUpDigest = useCallback(async () => {
+  // Fetch Catch-Up Digest for Active User
+  const fetchCatchUpDigest = useCallback(async (userId: string) => {
     try {
-      const res = await fetch("/api/session/catchup");
+      const res = await fetch(`/api/session/catchup?userId=${userId}`);
       const data = await res.json();
       if (data.success) {
         setDigest(data.digest);
@@ -50,9 +63,38 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    fetchWatchlists();
-    fetchCatchUpDigest();
-  }, [fetchWatchlists, fetchCatchUpDigest]);
+    fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    if (activeUserId) {
+      fetchWatchlists(activeUserId);
+      fetchCatchUpDigest(activeUserId);
+    }
+  }, [activeUserId, fetchWatchlists, fetchCatchUpDigest]);
+
+  // User Switcher Handler
+  const handleSwitchUser = (userId: string) => {
+    setActiveUserId(userId);
+  };
+
+  // Create User Handler
+  const handleCreateUser = async (name: string, email: string) => {
+    try {
+      const res = await fetch("/api/session/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        await fetchUsers();
+        setActiveUserId(data.user.id);
+      }
+    } catch (e) {
+      console.error("Error creating user:", e);
+    }
+  };
 
   // Merge live stream quotes with active watchlist items
   const activeWatchlist = watchlists.find((w) => w.id === activeWatchlistId) || watchlists[0];
@@ -67,27 +109,32 @@ export function App() {
   // Catch-Up Acknowledge Handler
   const handleAcknowledgeCatchUp = async () => {
     try {
-      const res = await fetch("/api/session/catchup/acknowledge", { method: "POST" });
+      const res = await fetch("/api/session/catchup/acknowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: activeUserId }),
+      });
       const data = await res.json();
       if (data.success) {
-        await fetchCatchUpDigest();
+        await fetchCatchUpDigest(activeUserId);
       }
     } catch (e) {
       console.error(e);
     }
   };
 
-  // Add Stock Handler
-  const handleAddStock = async (symbol: string) => {
+  // Add Stock Handler (supports custom stocks!)
+  const handleAddStock = async (symbol: string, customName?: string, customPrice?: number) => {
     if (!activeWatchlistId) return;
     try {
       await fetch(`/api/watchlists/${activeWatchlistId}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol }),
+        body: JSON.stringify({ symbol, customName, customPrice }),
       });
-      await fetchWatchlists();
-      await fetchCatchUpDigest();
+      await fetchWatchlists(activeUserId);
+      await fetchCatchUpDigest(activeUserId);
+      await fetchUsers();
     } catch (e) {
       console.error(e);
     }
@@ -100,8 +147,9 @@ export function App() {
       await fetch(`/api/watchlists/${activeWatchlistId}/items/${symbol}`, {
         method: "DELETE",
       });
-      await fetchWatchlists();
-      await fetchCatchUpDigest();
+      await fetchWatchlists(activeUserId);
+      await fetchCatchUpDigest(activeUserId);
+      await fetchUsers();
     } catch (e) {
       console.error(e);
     }
@@ -112,7 +160,7 @@ export function App() {
     const res = await fetch("/api/session/time-travel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ minutesAway: minutes }),
+      body: JSON.stringify({ minutesAway: minutes, userId: activeUserId }),
     });
     const data = await res.json();
     if (data.success) {
@@ -169,12 +217,14 @@ export function App() {
 
   return (
     <div className="min-h-screen bg-[#0F1015] text-slate-100 flex flex-col">
-      {/* Top Navbar */}
+      {/* Top Navbar with Multi-User Switcher */}
       <Navbar
         connectionStatus={connectionStatus}
-        lastViewedAt={digest?.lastViewedAt || null}
+        users={users}
+        activeUserId={activeUserId}
+        onSwitchUser={handleSwitchUser}
         onOpenTimeTravel={() => setIsTimeTravelOpen(true)}
-        onRefreshCatchUp={fetchCatchUpDigest}
+        onCreateUser={handleCreateUser}
       />
 
       {/* Main Content Area */}
@@ -197,7 +247,7 @@ export function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
-        Groww CODE 2026 Engineering Build â€¢ PulseWatch Smart Market Watchlist Architecture
+        Groww CODE 2026 Engineering Build • PulseWatch Smart Market Watchlist Architecture • Multi-User Persistent Session Engine
       </footer>
 
       {/* Modals */}

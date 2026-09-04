@@ -1,13 +1,14 @@
 # PulseWatch: The Smart Market Urgency Watchlist
 ### Built for Groww CODE 2026 Engineering Build Challenge
 
-[![Tests](https://img.shields.io/badge/Tests-13%2F13%20Passed-00D09C?style=for-the-badge)](https://github.com/)
+[![Tests](https://img.shields.io/badge/Vitest-13%2F13%20Passed-00D09C?style=for-the-badge)](https://github.com/)
 [![Architecture](https://img.shields.io/badge/Architecture-Clean%20Event--Driven-5367FF?style=for-the-badge)](https://github.com/)
-[![License](https://img.shields.io/badge/Fintech-SLA%20Verified-EB5B3C?style=for-the-badge)](https://github.com/)
+[![Fintech](https://img.shields.io/badge/Fintech-SLA%20Verified-EB5B3C?style=for-the-badge)](https://github.com/)
+[![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](https://github.com/)
 
 ---
 
-## 100-Word Product Pitch
+## 100-Word Product Pitch (Submission Requirement)
 
 > Most stock watchlists are noisy spreadsheets of green and red numbers that force investors to guess what matters. **PulseWatch** re-engineers the watchlist into an active market urgency engine. Instead of passive prices, PulseWatch computes a real-time **Attention Score (0–100)** driven by institutional volume anomalies (≥2.5x 20D volume), 52-week breakouts, circuit band proximity, and flash momentum. When users return, our **"While You Were Away"** delta engine highlights the exact macro shifts that occurred during their absence. Backed by strict monotonic tick sequencing, multi-exchange (NSE/BSE) reconciliation, and freshness SLAs, PulseWatch surfaces signal over noise.
 
@@ -15,28 +16,26 @@
 
 ## Why PulseWatch? The Engineering Philosophy
 
-When Groww asked: *"Don't build the obvious watchlist. Build the version you believe should exist — and be ready to explain why"*, we analyzed the cognitive bottleneck of modern retail investing:
-1. **Raw Percentage Change is Noise:** A stock moving +2.1% on thin liquidity is irrelevant noise. A stock moving +1.8% on 3.5x average volume or breaking a 1-year resistance ceiling is an institutional catalyst.
+When Groww asked: *"Don't build the obvious watchlist. Build the version you believe should exist — and be ready to explain why"*, we addressed three core bottlenecks in retail investing:
+
+1. **Raw Percentage Change is Noise:** A stock moving +2.1% on low volume is retail noise. A stock moving +1.8% on 3.5x average volume or breaking a 1-year resistance ceiling indicates an institutional catalyst.
 2. **Session Blindness:** When an investor closes the app at 11:00 AM and returns at 2:30 PM, they shouldn't have to manually inspect 20 intraday charts to figure out what happened in between.
 3. **Data Integrity Failure in Volatile Markets:** In real Indian exchanges (NSE/BSE), WebSocket packets arrive out of order, clock drift happens, and internet connections stall. Without strict sequencing and freshness SLAs, users make irreversible financial decisions on stale quotes.
 
 ---
 
-## Core Engineering Pillars
+## Key Features Built & Implemented
 
 ### 1. The Meaningful Change Engine
 We mathematically quantify market changes beyond arbitrary thresholds:
 * **Volume Anomaly Ratio ($V_R$):**
   $$V_R = \frac{\text{Current Cumulative Volume}}{\text{Baseline 20D Volume} \times (\text{Session Elapsed Fraction})}$$
-  If $V_R \ge 2.2\times$, it triggers a `VOLUME_SURGE` alert, flagging block deals or abnormal institutional order flow.
-* **Key Technical Level Violations:**
-  Breach of 52-week High/Low triggers `BREAKOUT_52W_HIGH` or `BREAKOUT_52W_LOW`.
-* **Circuit Breaker Band Proximity:**
-  If LTP is within $\le 1.2\%$ of Upper or Lower 10% circuit limits, it triggers `CIRCUIT_APPROACH` before exchange trading freeze occurs.
-* **Rate of Change (RoC) Velocity:**
-  Tracks a rolling 5-minute price buffer; a $\ge 1.8\%$ move in $<5$ minutes triggers `RAPID_ROC_ACCELERATION`.
+  If $V_R \ge 2.2\times$, it triggers a `VOLUME_SURGE` alert, flagging institutional block deals.
+* **Key Technical Level Violations:** Breach of 52-week High/Low triggers `BREAKOUT_52W_HIGH` or `BREAKOUT_52W_LOW`.
+* **Circuit Breaker Band Proximity:** If LTP is within $\le 1.2\%$ of Upper or Lower 10% circuit limits, it triggers `CIRCUIT_APPROACH` before exchange trading freeze occurs.
+* **Rate of Change (RoC) Velocity:** Rolling 5-minute price buffer; a $\ge 1.8\%$ move in $<5$ minutes triggers `RAPID_ROC_ACCELERATION`.
 
-### 2. The Dynamic Attention Score (0 – 100)
+### 2. Dynamic Attention Urgency Score (0 – 100)
 Rather than forcing users to sort alphabetically or by percentage, the Attention Engine ranks securities by combined urgency:
 
 $$\text{Attention Score} = S_{\text{vol}} (0-30) + S_{\text{velocity}} (0-30) + S_{\text{breakout}} (0-25) + S_{\text{circuit}} (0-15)$$
@@ -48,7 +47,16 @@ Every score is 100% transparent and explainable in the UI, breaking down each su
 * On session resumption, the backend queries historical snapshots closest to $T_{\text{lastSeen}}$ and calculates exact price/volume deltas and logged events across the interval.
 * Users can acknowledge and mark caught up, or use the **Judge Test Bench** to simulate leaving for 30 minutes, 2 hours, or 1 day.
 
-### 4. Fintech Resilience & Freshness SLAs
+### 4. Multi-User & Cross-Device State Persistence
+* Switch between multiple investor profiles (e.g. **Riya Sharma** vs **Aarav Patel** vs **Priya Nair**) from the navbar dropdown.
+* Each user maintains their own distinct watchlists, device session history, and personal `lastViewedAt` timestamp.
+* Create new user profiles dynamically on the fly.
+
+### 5. 20 Indian Equities + Custom Stock Auto-Registration
+* Pre-seeded with 20 major Indian stocks across all sectors (Banking, IT, Auto, Pharma, Energy, FMCG, Metals, Telecom).
+* **Add Any Custom Stock:** Type any ticker symbol (e.g. `PAYTM`, `JIOFIN`, `IRFC`, `POLYCAB`, `HAL`). PulseWatch automatically generates its 52W range, 10% exchange circuits, and 20D baseline volume, and begins streaming live ticks immediately!
+
+### 6. Fintech Resilience & Freshness SLAs
 * **Monotonic Tick Sequencing:** Exchange ticks carry monotonic `sequenceId`. The `TickSequencer` rejects out-of-order ticks ($N \le N_{\text{last}}$) and checks clock skew ($>30\text{s}$ future skew rejection).
 * **Multi-Exchange (NSE vs BSE) Reconciliation:** Tracks quotes across both exchanges; detects cross-exchange arbitrage discrepancies ($\ge 0.4\%$ spread) and deterministically selects the primary liquidity exchange.
 * **Data Freshness SLA Badges:**
@@ -63,7 +71,7 @@ Every score is 100% transparent and explainable in the UI, breaking down each su
 | Decision | Alternative Considered | Why We Chose It (The Engineering Trade-off) |
 | :--- | :--- | :--- |
 | **Node.js / Fastify + TypeScript** | Express.js / Python Flask | Fastify offers ~3x the throughput of Express, built-in schema validation, and native async/WebSocket integration for high-frequency market updates. |
-| **In-Memory Quote Store + SQLite WAL Mode (Prisma)** | Heavy PostgreSQL + Redis cluster | For 10-hour execution and deterministic zero-dependency local judge evaluation, SQLite WAL mode with Prisma provides full ACID transactions and snapshot diffing without forcing judges to configure external DB daemons. Upgrading to Postgres requires changing only 1 line in `schema.prisma`. |
+| **In-Memory Quote Store + SQLite WAL Mode (Prisma)** | Heavy PostgreSQL + Redis cluster | For deterministic zero-dependency evaluation, SQLite WAL mode with Prisma provides full ACID transactions and snapshot diffing without forcing judges to configure external DB daemons. Upgrading to Postgres requires changing only 1 line in `schema.prisma`. |
 | **Throttled WebSocket Broadcast (1000ms)** | Raw Tick Fanout per microsecond | Emitting 500 ticks/sec to a browser causes JavaScript main thread starvation and UI stutter. Throttling state diffs to 1-second intervals provides smooth 60fps rendering while preserving zero data loss in the backend sequence book. |
 | **Dynamic Attention Ranking** | Static Sorting by Gainers/Losers | A stock up +0.5% with 4x volume breaking 52W high is vastly more critical than a penny stock up +3% on 2 trades. Urgency ranking saves user capital. |
 
@@ -105,6 +113,7 @@ Every score is 100% transparent and explainable in the UI, breaking down each su
                                        |    (React 19 + Vite + Tailwind)   |
                                        |  - "While You Were Away" Digest   |
                                        |  - Attention Priority Table       |
+                                       |  - Multi-User Switcher            |
                                        |  - SLA Freshness Status Badges    |
                                        |  - Judge Interactive Test Bench   |
                                        +-----------------------------------+
@@ -118,27 +127,29 @@ Every score is 100% transparent and explainable in the UI, breaking down each su
 * Node.js v18+ (Node v22 recommended)
 * npm
 
-### 1. Clone and Install
+### Option A: Local Development Run
 ```bash
+# 1. Clone repo
 git clone <repo-url>
 cd groww
-```
 
-### 2. Setup Backend
-```bash
+# 2. Setup and run Backend
 cd backend
 npm install
 npx prisma db push
 npx tsx src/db/seed.ts
 npm run start
-```
-*Backend runs on `http://localhost:4000` with WebSocket at `ws://localhost:4000/ws/market`.*
 
-### 3. Setup Frontend
-```bash
+# 3. In another terminal, run Frontend
 cd ../frontend
 npm install
 npm run dev
+```
+*Frontend runs on `http://localhost:3000`, Backend on `http://localhost:4000`.*
+
+### Option B: Single-Command Docker Run
+```bash
+docker-compose up --build
 ```
 *Open `http://localhost:3000` in your browser.*
 
@@ -156,15 +167,6 @@ npm run test
 * `conflictResolver.test.ts`: Single-feed pass-through, multi-exchange liquidity matching, arbitrage spread detection.
 * `changeDetector.test.ts`: Volume surge detection, 52W high breakout, circuit proximity alerting.
 * `attentionScorer.test.ts`: Urgency ranking formula validation.
-
----
-
-## Docker Deployment (Single Command)
-
-```bash
-docker-compose up --build
-```
-*Frontend will be accessible at `http://localhost:3000` and backend at `http://localhost:4000`.*
 
 ---
 
